@@ -1,0 +1,9 @@
+-- Particle System --
+--- How the shader works ---
+Every particle has an initial movement vector v0 and a spawnTime.
+Particles are only drawn once their lifetime (totalTime - spawnTime) is non-negative.
+Then their position is calculated via an equation of motion (x = v0 * lt + gravity * lt^2), which is added
+onto the emitter position, from which all particles originate.
+This results in the position where the vertex is drawn.
+The color of the vertex is dependent on its lifetime and fades from bright yellow to dark red. After a certain
+time is reached, the particles opacity reaches 0 and it is not visible anymore.

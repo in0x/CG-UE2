@@ -1,7 +1,0 @@
-C:\Users\Philipp\Desktop\FHS_CG_Uebung\Aufgabe_2\bin\Debug\Effect.exe.config
-C:\Users\Philipp\Desktop\FHS_CG_Uebung\Aufgabe_2\bin\Debug\Effect.exe
-C:\Users\Philipp\Desktop\FHS_CG_Uebung\Aufgabe_2\bin\Debug\Effect.pdb
-C:\Users\Philipp\Desktop\FHS_CG_Uebung\Aufgabe_2\bin\Debug\OpenTK.dll
-C:\Users\Philipp\Desktop\FHS_CG_Uebung\Aufgabe_2\obj\Debug\Effect.csprojResolveAssemblyReference.cache
-C:\Users\Philipp\Desktop\FHS_CG_Uebung\Aufgabe_2\obj\Debug\Effect.exe
-C:\Users\Philipp\Desktop\FHS_CG_Uebung\Aufgabe_2\obj\Debug\Effect.pdb

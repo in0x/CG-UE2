@@ -5,6 +5,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 
 using OpenTK;
+using OpenTK.Input;
 using OpenTK.Graphics;
 using OpenTK.Graphics.OpenGL;
 
@@ -19,8 +20,18 @@ namespace Exercise2
 
 precision highp float;
 
+//How the shader works
+//Every particle has an initial movement vector v0 and a spawnTime.
+//Particles are only drawn once their lifetime (totalTime - spawnTime) is non-negative.
+//Then their position is calculated via an equation of motion (x = v0 * lt + gravity * lt^2), which is added
+//onto the emitter position, from which all particles originate
+//This results in the position where the vertex is drawn
+//The color of the vertex is dependent on its lifetime and fades from bright yellow to dark red. After a certain
+//time is reached, the particles opacity reaches 0 and it is not visible anymore
+
 uniform mat4 projection_matrix;
 uniform mat4 modelview_matrix;
+uniform vec3 gravity;
 uniform float elapsed_time;
 uniform vec3 emitter_position;
 
@@ -32,12 +43,12 @@ out vec4 color;
 
 void main(void)
 {  
-    gl_PointSize = 4.0;
+    gl_PointSize = 3.0;
 
     float time = max(elapsed_time - in_time, 0.0);
-    time = mod(time , 10);
+    time = mod(time , 10); //loops the time from 0 to 10
     vec3 position = emitter_position;
-    vec3 gravity = vec3(0f, -1f, 0f);
+    //vec3 gravity = vec3(-1f, -1f, 0f);
     position += in_point * time + 0.2f * gravity * time * time;
     color = vec4(1f - time / 15f,  1f - time / 4, 0.4 - time / 4, 1f - time / 8);
     gl_Position = projection_matrix * modelview_matrix * vec4(position, 1);  
@@ -71,13 +82,16 @@ void main(void)
             timesVBOhandle,
             VAOHandle,
             totalTimeLocation,
-            emitterPositionLocation;
+            emitterPositionLocation,
+            gravityVectorPosition;
 
         const int particleCount = 2000;
 
         Matrix4 projectionMatrix, viewMatrix;
 
         ObjMesh objMesh;
+
+        Vector3 gravityVec = new Vector3(0f, -1f, 0f);
 
         float frame_counter = 0f;
 
@@ -99,7 +113,7 @@ void main(void)
             // Enable VSync to release CPU time during the render loop
             VSync = VSyncMode.On;
 
-            // Set up general GL states
+            // Set up general GL states + alpha blending + variable point size
             GL.Enable(EnableCap.DepthTest);
             GL.ClearColor(0f,0f,0f,1.0f);
             GL.Enable(EnableCap.ProgramPointSize);
@@ -147,7 +161,8 @@ void main(void)
             projectionMatrixLocation = GL.GetUniformLocation(shaderProgramHandle, "projection_matrix");
             modelviewMatrixLocation = GL.GetUniformLocation(shaderProgramHandle, "modelview_matrix");
             totalTimeLocation = GL.GetUniformLocation(shaderProgramHandle, "elapsed_time");
-            emitterPositionLocation = GL.GetUniformLocation(shaderProgramHandle, "emitter_position");
+            emitterPositionLocation = GL.GetUniformLocation(shaderProgramHandle, "emitter_position"); //particle origin
+            gravityVectorPosition = GL.GetUniformLocation(shaderProgramHandle, "gravity");
 
             // Set projection matrix
             GL.Viewport(0, 0, Width, Height);
@@ -156,47 +171,17 @@ void main(void)
             GL.UniformMatrix4(projectionMatrixLocation, false, ref projectionMatrix);
 
             // For the start, set modelview matrix of shader to view matrix of opengl camera
-            viewMatrix = Matrix4.LookAt(new Vector3(-5.0f, 0f, -5.0f), new Vector3(0.0f, 0.0f, 0.0f), new Vector3(0.0f, 1.0f, 0.0f));
+            viewMatrix = Matrix4.LookAt(new Vector3(-5.0f, 0f, -5f), new Vector3(0.0f, 0.0f, 0.0f), new Vector3(0.0f, 1.0f, 0.0f));
             GL.UniformMatrix4(modelviewMatrixLocation, false, ref viewMatrix);
 
 
             GL.Uniform1(totalTimeLocation, frame_counter);
             //GL.Uniform1(totalTimeLocation, (float)Process.GetCurrentProcess().TotalProcessorTime.Milliseconds);
             GL.Uniform3(emitterPositionLocation, new Vector3(0f, 0f, 0f));
+            GL.Uniform3(gravityVectorPosition, gravityVec);
 
-            // Set texture image location in shader to texture unit 0. We can do this, because
-            // we will only use at most one texture per geometry. This texture is always bound 
-            // to unit 0.
-            //int texImageLoc = GL.GetUniformLocation(shaderProgramHandle, "texImage");
-            //GL.Uniform1(texImageLoc, 0);
         }
 
-        //int CreateTexture(String textureName)
-        //{
-            // Load bitmap
-            //Bitmap bitmap = new Bitmap(textureName);
-            // Flip image to match opengl tex coordinate system (0,0)->bottom left
-            //bitmap.RotateFlip(RotateFlipType.RotateNoneFlipY);
-
-            // Load texture
-            //int textureId;
-            //GL.GenTextures(1, out textureId);
-            //GL.BindTexture(TextureTarget.Texture2D, textureId);
-            //GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Linear);
-            //GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Linear);
-
-            //BitmapData data = bitmap.LockBits(new System.Drawing.Rectangle(0, 0, bitmap.Width, bitmap.Height),
-            //    ImageLockMode.ReadOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
-
-            //GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba, data.Width, data.Height, 0,
-            //    OpenTK.Graphics.OpenGL.PixelFormat.Bgra, PixelType.UnsignedByte, data.Scan0);
-
-            //bitmap.UnlockBits(data);
-
-            //GL.BindTexture(TextureTarget.Texture2D, 0);
-
-            //return textureId;
-        //}
 
         void CreateObjects()
         {
@@ -209,8 +194,12 @@ void main(void)
             float[] initialTimes = new float[particleCount];
             float totalTime = 0f;
             Random rand = new Random();
+            //Every particle recieves a pseudo-random motion vector ([-0.3,0.3], [0.7, 1], [-0.3,0.3]) which is used to calculate the
+            //particles movement over time. It also recievs an initialTime, which decides how long it takes for each particle to spawn.
+            //This time is increased after each particle so as to create an interval
             for (int i = 0; i < particleCount; i++) {
-                points[i] = new Vector3(((float)rand.Next(0, 101)) / 100 - 0.5f, 1f, ((float)rand.Next(0, 101)) / 100 - 0.5f);
+                //points[i] = new Vector3(((float)rand.Next(0, 101)) / 100 - 0.5f, 1f, ((float)rand.Next(0, 101)) / 100 - 0.5f);
+                points[i] = new Vector3(((float)rand.Next(0, 61)) / 100 - 0.3f, (float)rand.Next(70, 101) / 100, ((float)rand.Next(0, 61)) / 100 - 0.3f);
                 initialTimes[i] = totalTime;
                 totalTime += 0.005f;
             }
@@ -263,21 +252,24 @@ void main(void)
         {
             GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
-            //// Scale cube
-            //Matrix4 modelviewMatrix = Matrix4.CreateScale(4.0f, 4.0f, 4.0f) * viewMatrix;
-            //GL.UniformMatrix4(modelviewMatrixLocation, false, ref modelviewMatrix);
+            MouseState mouse = Mouse.GetState();
+      
+           // Console.WriteLine((((float)this.Mouse.X / this.Width) - 0.5) * 2);
+            //Console.WriteLine(((float)this.Mouse.Y / this.Height - 0.5) * 2);
+            //Take mouse position and transform coordinates to have their center in the middle of the screen, reaching from -1 to 1
+            double y = (((double)this.Mouse.Y / this.Height) - 0.5) * -2; 
+            double x = (((double)this.Mouse.X / this.Width) - 0.5) * -2;
+            gravityVec = new Vector3((float)x, (float)y - 1, 0);
+            GL.Uniform3(gravityVectorPosition, gravityVec);
 
-            //GL.ActiveTexture(TextureUnit.Texture0);
-            //GL.BindTexture(TextureTarget.Texture2D, texture);
+            //rotMat = Matrix4.CreateRotationY((float)-Math.Sin(e.Time) / 100f) * rotMat;
 
-            //objMesh.Render();
+            //Set emitter position to origin of left click
+            if (mouse[MouseButton.Left]) {
+                GL.Uniform3(emitterPositionLocation, new Vector3((float)x*5, (float)y*5, 0));
+            }
 
-            //GL.BindTexture(TextureTarget.Texture2D, 0);
-            //GL.Uniform1(totalTimeLocation, (float)Process.GetCurrentProcess().TotalProcessorTime.Milliseconds);
-
-
-            rotMat = Matrix4.CreateRotationY((float)-Math.Sin(e.Time) / 100f) * rotMat;
-
+            //Increase time passed after each frame
             if (frame_counter >= float.MaxValue - 1 || frame_counter < 0)
                 frame_counter = 0;
             frame_counter += 0.1f;
@@ -300,7 +292,7 @@ void main(void)
         {
             using (Effect example = new Effect())
             {
-                example.Title = "FH Salzburg | OpenGL 3 Tutorial";
+                example.Title = "Left Click to change emitter position";
                 //example.Icon = OpenTK.Examples.Properties.Resources.Game;
                 example.Run(30, 30);
             }
